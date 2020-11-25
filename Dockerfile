@@ -20,7 +20,7 @@ RUN cargo build --bins --release --target x86_64-unknown-linux-musl
 COPY src ./src
 
 # Rebuild with real sources
-RUN rm ./target/x86_64-unknown-linux-musl/release/deps/hkd_encyclopedia_front_service*
+RUN rm ./target/x86_64-unknown-linux-musl/release/deps/airtravel*
 RUN cargo build --bins --release --target x86_64-unknown-linux-musl
 
 
