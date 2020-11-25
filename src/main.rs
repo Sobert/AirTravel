@@ -4,15 +4,20 @@
 extern crate rocket;
 use std::env;
 
-use serde::{Deserialize, Serialize};
-
 use rocket::config::{Config, Environment};
 
 use std::io::Read;
 
-use rocket::{Request, Data, Outcome, Outcome::*};
+use rocket::{Request, Data, Outcome::*};
 use rocket::data::{self, FromDataSimple};
 use rocket::http::{Status, ContentType};
+
+use rocket::State;
+use std::sync::Mutex;
+
+mod model;
+use model::*;
+
 
 fn main() {
     let mut port: u16 = 8080;
@@ -35,14 +40,17 @@ fn main() {
         .unwrap();
 
     let app = rocket::custom(config);
-    app.mount("/", routes![get_flight_list, get_flight_options, post_ticket])
+    app.mount("/", routes![get_flight_list, get_flight_options, post_ticket, get_tickets])
+    .manage(SharedData {
+        flights: Mutex::new(fill_flights()),
+        options: Mutex::new(fill_flight_options()),
+        tickets: Mutex::new(Vec::new()),
+    })
     .launch();
 }
 
-
-#[get("/flights/<date>")]
-fn get_flight_list(date: String) -> String {
-    let flights = vec![
+fn fill_flights() -> Vec<Flight> {
+    vec![
         Flight {
             code: "AF345".to_string(),
             departure: Airport::DTW,
@@ -50,17 +58,48 @@ fn get_flight_list(date: String) -> String {
             base_price: 300,
             plane: Plane {
                 name: "AIRBUS350".to_string(),
+                total_seats: 200,
+            },
+            seats_booked: 0,
+        },
+        Flight {
+            code: "AF346".to_string(),
+            departure: Airport::DTW,
+            arrival: Airport::CDG,
+            base_price: 700,
+            plane: Plane {
+                name: "AIRBUS750".to_string(),
+                total_seats: 700,
+            },
+            seats_booked: 0,
+        },
+        Flight {
+            code: "AF347".to_string(),
+            departure: Airport::CDG,
+            arrival: Airport::JFK,
+            base_price: 1000,
+            plane: Plane {
+                name: "AIRBUS950".to_string(),
+                total_seats: 1000,
+            },
+            seats_booked: 0,
+        },
+        Flight {
+            code: "AF348".to_string(),
+            departure: Airport::CDG,
+            arrival: Airport::LAD,
+            base_price: 300,
+            plane: Plane {
+                name: "AIRBUS450".to_string(),
                 total_seats: 400,
             },
             seats_booked: 0,
-        }
-    ];
-    serde_json::to_string(&flights).unwrap()
+        },
+    ]
 }
 
-#[get("/available_options/<flight>")]
-fn get_flight_options(flight: String) -> String {
-    let flight_options = vec![
+fn fill_flight_options() -> Vec<FlightOptions> {
+    vec![
         FlightOptions {
             option_type: OptionType::BonusLuggage,
             price: 100,
@@ -69,12 +108,30 @@ fn get_flight_options(flight: String) -> String {
             option_type: OptionType::ChampagneOnBoard,
             price: 150,
         }
-    ];
-    serde_json::to_string(&flight_options).unwrap()
+    ]
+}
+
+
+#[get("/flights/<date>")]
+fn get_flight_list(date: String, shared: State<SharedData>) -> String {
+    let shared_data: &SharedData = shared.inner();
+    serde_json::to_string(&shared_data.flights).unwrap()
+}
+
+#[get("/available_options/<flight>")]
+fn get_flight_options(flight: String, shared: State<SharedData>) -> String {
+    let shared_data: &SharedData = shared.inner();
+    serde_json::to_string(&shared_data.options).unwrap()
+}
+
+#[get("/tickets")]
+fn get_tickets(shared: State<SharedData>) -> String {
+    let shared_data: &SharedData = shared.inner();
+    serde_json::to_string(&shared_data.tickets).unwrap()
 }
 
 #[post("/book", format = "application/json", data = "<ticket>")]
-fn post_ticket(ticket: Ticket) -> String { 
+fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> String { 
     let success_ticket = Ticket {
         code: Some("Success".to_string()),
         flight: ticket.flight,
@@ -85,69 +142,26 @@ fn post_ticket(ticket: Ticket) -> String {
         options: ticket.options,
         booking_source: ticket.booking_source,
     };
-    serde_json::to_string(&success_ticket).unwrap()
+    let shared_data: &SharedData = shared.inner();
+    shared_data.tickets.lock().unwrap().push(success_ticket);
+    serde_json::to_string("success").unwrap()
 }
 
-//models
+//structs
 
-#[derive(Serialize, Deserialize, Debug)]
-enum Airport {
-    DTW,
-    JFK,
-    CDG,
-    LAD
+struct SharedData {
+    flights: Mutex<Vec<Flight>>,
+    options: Mutex<Vec<FlightOptions>>,
+    tickets: Mutex<Vec<Ticket>>,
 }
 
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Plane {
-    name: String,
-    total_seats: i32,
-}
-
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Flight {
-    code: String,
-    departure: Airport,
-    arrival: Airport,
-    base_price: i32,
-    plane: Plane,
-    seats_booked: i32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Ticket {
-    code: Option<String>,
-    flight: Flight,
-    date: String,
-    payed_price: i32,
-    customer_name: String,
-    customer_nationality: String,
-    options: Option<Vec<FlightOptions>>,
-    booking_source: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct FlightOptions {
-    option_type: OptionType,
-    price: i32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-enum OptionType {
-    BonusLuggage,
-    FirstClass,
-    ChampagneOnBoard,
-    LoungeAccess,
-}
 
 // Always use a limit to prevent DoS attacks.
-const LIMIT: u64 = 256;
+const LIMIT: u64 = 100000;
 
 impl FromDataSimple for Ticket {
     type Error = String;
-    fn from_data(req: &Request, data: Data) -> data::Outcome<Self, String> {
+    fn from_data(_req: &Request, data: Data) -> data::Outcome<Self, String> {
         // Read the data into a String.
         let mut string = String::new();
         if let Err(e) = data.open().take(LIMIT).read_to_string(&mut string) {
@@ -156,7 +170,10 @@ impl FromDataSimple for Ticket {
         //Deserialize
         match serde_json::from_str(&string) {
             Ok(t) => Success(t),
-            Err(e) => Failure((Status::UnprocessableEntity, format!("{:?}", e)))
+            Err(e) =>  { 
+                println!("{:#?}", e);
+                Failure((Status::UnprocessableEntity, format!("{:?}", e)))
+            }
         }
     }
 }
