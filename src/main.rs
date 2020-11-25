@@ -35,7 +35,7 @@ fn main() {
         .unwrap();
 
     let app = rocket::custom(config);
-    app.mount("/", routes![get_flight_list, get_flight_options])
+    app.mount("/", routes![get_flight_list, get_flight_options, post_ticket])
     .launch();
 }
 
@@ -74,7 +74,7 @@ fn get_flight_options(flight: String) -> String {
 }
 
 #[post("/book", format = "application/json", data = "<ticket>")]
-fn new_user(ticket: Ticket) -> String { 
+fn post_ticket(ticket: Ticket) -> String { 
     let success_ticket = Ticket {
         code: Some("Success".to_string()),
         flight: ticket.flight,
