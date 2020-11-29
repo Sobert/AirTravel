@@ -114,26 +114,26 @@ fn fill_flight_options() -> Vec<FlightOptions> {
 
 
 #[get("/flights/<date>")]
-fn get_flight_list(date: String, shared: State<SharedData>) {
+fn get_flight_list(date: String, shared: State<SharedData>) -> Json<String>{
     let shared_data: &SharedData = shared.inner();
-    Json(serde_json::to_string(&shared_data.flights).unwrap());
+    Json(serde_json::to_string(&shared_data.flights).unwrap())
 }
 
 
 #[get("/available_options/<flight>")]
-fn get_flight_options(flight: String, shared: State<SharedData>) {
+fn get_flight_options(flight: String, shared: State<SharedData>) -> Json<String>{
     let shared_data: &SharedData = shared.inner();
-    Json(serde_json::to_string(&shared_data.options).unwrap());
+    Json(serde_json::to_string(&shared_data.options).unwrap())
 }
 
 #[get("/tickets")]
-fn get_tickets(shared: State<SharedData>) -> String {
+fn get_tickets(shared: State<SharedData>) -> Json<String> {
     let shared_data: &SharedData = shared.inner();
-    serde_json::to_string(&shared_data.tickets).unwrap()
+    Json(serde_json::to_string(&shared_data.tickets).unwrap())
 }
 
 #[post("/book", format = "application/json", data = "<ticket>")]
-fn post_ticket(ticket: Ticket, shared: State<SharedData>) {
+fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> Json<String>{
     let success_ticket = Ticket {
         code: Some("Success".to_string()),
         flight: ticket.flight,
@@ -146,7 +146,7 @@ fn post_ticket(ticket: Ticket, shared: State<SharedData>) {
     };
     let shared_data: &SharedData = shared.inner();
     shared_data.tickets.lock().unwrap().push(success_ticket);
-    Json(serde_json::to_string("success").unwrap());
+    Json(serde_json::to_string("success").unwrap())
 }
 
 //structs
