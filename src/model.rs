@@ -25,7 +25,7 @@ pub struct Flight {
     pub plane: Plane
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Ticket {
     pub code: Option<String>,
     pub flight: Flight,

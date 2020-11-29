@@ -91,7 +91,7 @@ fn fill_flights() -> Vec<Flight> {
             base_price: 300,
             plane: Plane {
                 name: "AIRBUS450".to_string(),
-                total_seats: 400,
+                total_seats: 300,
             },
         },
     ]
@@ -166,19 +166,37 @@ fn get_tickets(shared: State<SharedData>) -> Json<String> {
 
 #[post("/book", format = "application/json", data = "<ticket>")]
 fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> Result<Json<String>, Status> {
-    let success_ticket = Ticket {
-        code: Some("Success".to_string()),
-        flight: ticket.flight,
-        date: ticket.date,
-        payed_price: ticket.payed_price,
-        customer_name: ticket.customer_name,
-        customer_nationality: ticket.customer_nationality,
-        options: ticket.options,
-        booking_source: ticket.booking_source,
-    };
+    //check flight
     let shared_data: &SharedData = shared.inner();
-    shared_data.tickets.lock().unwrap().push(success_ticket);
-    Ok(Json(serde_json::to_string("success").unwrap()))
+    let flights = shared_data.flights.lock().unwrap();
+    let mut flights_iter = flights.clone().into_iter();
+    match flights_iter.find(|x| x.code == ticket.flight.code) {
+        None => return Err(Status::NotFound),
+        Some(flight) => {
+            //Check availability
+            let mut tickets = shared_data.tickets.lock().unwrap();
+            let tickets_sold: Vec<Ticket> = tickets.clone().into_iter().filter(|x| x.flight.code == flight.code && x.date == ticket.date).collect();
+            if (tickets_sold.len() as i32) - flight.plane.total_seats >= 0 {
+                //Not seats
+                return Err(Status::Gone);
+            } else {
+                println!("Booking");
+                let success_ticket = Ticket {
+                    code: Some("Success".to_string()),
+                    flight: ticket.flight,
+                    date: ticket.date,
+                    payed_price: ticket.payed_price,
+                    customer_name: ticket.customer_name,
+                    customer_nationality: ticket.customer_nationality,
+                    options: ticket.options,
+                    booking_source: ticket.booking_source,
+                };
+                println!("Booking of: {:#?}", success_ticket);
+                tickets.push(success_ticket);
+                return Ok(Json(serde_json::to_string("success").unwrap()));
+            }
+        }
+    }
 }
 
 //structs
