@@ -56,19 +56,3 @@ enum OptionType {
     LoungeAccess,
 }
 ```
-
-## Methods
-### Get Flights
-```bash
-GET /flights/<date>
-```
-
-### Get Available Options
-```bash
-GET /available_options/<flight>
-```
-
-### Book Flight
-```bash
-POST /book
-```
