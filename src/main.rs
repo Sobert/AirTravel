@@ -4,6 +4,8 @@
 extern crate rocket;
 use std::env;
 
+use std::collections::HashMap;
+
 use rocket::config::{Config, Environment};
 
 use std::io::Read;
@@ -61,7 +63,6 @@ fn fill_flights() -> Vec<Flight> {
                 name: "AIRBUS350".to_string(),
                 total_seats: 200,
             },
-            seats_booked: 0,
         },
         Flight {
             code: "AF346".to_string(),
@@ -72,7 +73,6 @@ fn fill_flights() -> Vec<Flight> {
                 name: "AIRBUS750".to_string(),
                 total_seats: 700,
             },
-            seats_booked: 0,
         },
         Flight {
             code: "AF347".to_string(),
@@ -83,7 +83,6 @@ fn fill_flights() -> Vec<Flight> {
                 name: "AIRBUS950".to_string(),
                 total_seats: 1000,
             },
-            seats_booked: 0,
         },
         Flight {
             code: "AF348".to_string(),
@@ -94,12 +93,13 @@ fn fill_flights() -> Vec<Flight> {
                 name: "AIRBUS450".to_string(),
                 total_seats: 400,
             },
-            seats_booked: 0,
         },
     ]
 }
 
-fn fill_flight_options() -> Vec<FlightOptions> {
+fn fill_flight_options() -> HashMap<String, Vec<FlightOptions>> {
+    let mut options = HashMap::new();
+    options.insert("default".to_string(), 
     vec![
         FlightOptions {
             option_type: OptionType::BonusLuggage,
@@ -110,20 +110,52 @@ fn fill_flight_options() -> Vec<FlightOptions> {
             price: 150,
         }
     ]
+    );
+    options.insert("AF347".to_string(), 
+    vec![
+        FlightOptions {
+            option_type: OptionType::FirstClass,
+            price: 1000,
+        },
+        FlightOptions {
+            option_type: OptionType::LoungeAccess,
+            price: 300,
+        }
+    ]
+    );
+    options
 }
 
 
-#[get("/flights/<date>")]
-fn get_flight_list(date: String, shared: State<SharedData>) -> Json<String>{
+#[get("/flights")]
+fn get_flight_list(shared: State<SharedData>) -> Json<String> {
     let shared_data: &SharedData = shared.inner();
     Json(serde_json::to_string(&shared_data.flights).unwrap())
 }
 
 
 #[get("/available_options/<flight>")]
-fn get_flight_options(flight: String, shared: State<SharedData>) -> Json<String>{
+fn get_flight_options(flight: String, shared: State<SharedData>) -> Result<Json<String>, Status> {
     let shared_data: &SharedData = shared.inner();
-    Json(serde_json::to_string(&shared_data.options).unwrap())
+    let flights = shared_data.flights.lock().unwrap();
+    let mut flights_iter = flights.clone().into_iter();
+    match flights_iter.find(|x| x.code == flight) {
+        None => return Err(Status::NotFound),
+        Some(_) => {
+            let mut options = Vec::new();
+            let vec_options = shared_data.options.lock().unwrap();
+            match vec_options.get(&"default".to_string()) {
+                Some(vec) => options.extend_from_slice(&vec.clone()),
+                None => println!("no option for default"),
+            }
+            match vec_options.get(&flight) {
+                Some(vec) => options.extend_from_slice(&vec.clone()),
+                None => println!("no option for flight"),
+            }
+            Ok(Json(serde_json::to_string(&options).unwrap()))
+        }
+    }
+    
 }
 
 #[get("/tickets")]
@@ -133,7 +165,7 @@ fn get_tickets(shared: State<SharedData>) -> Json<String> {
 }
 
 #[post("/book", format = "application/json", data = "<ticket>")]
-fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> Json<String>{
+fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> Result<Json<String>, Status> {
     let success_ticket = Ticket {
         code: Some("Success".to_string()),
         flight: ticket.flight,
@@ -146,14 +178,14 @@ fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> Json<String>{
     };
     let shared_data: &SharedData = shared.inner();
     shared_data.tickets.lock().unwrap().push(success_ticket);
-    Json(serde_json::to_string("success").unwrap())
+    Ok(Json(serde_json::to_string("success").unwrap()))
 }
 
 //structs
 
 struct SharedData {
     flights: Mutex<Vec<Flight>>,
-    options: Mutex<Vec<FlightOptions>>,
+    options: Mutex<HashMap<String,Vec<FlightOptions>>>,
     tickets: Mutex<Vec<Ticket>>,
 }
 

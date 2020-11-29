@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub enum Airport {
     DTW,
     JFK,
@@ -9,14 +9,14 @@ pub enum Airport {
 }
 
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Plane {
     pub name: String,
     pub total_seats: i32,
 }
 
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Flight {
     pub code: String,
     pub departure: Airport,
@@ -37,13 +37,13 @@ pub struct Ticket {
     pub booking_source: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FlightOptions {
     pub option_type: OptionType,
     pub price: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OptionType {
     BonusLuggage,
     FirstClass,
