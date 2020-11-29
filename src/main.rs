@@ -43,7 +43,7 @@ fn main() {
         .unwrap();
 
     let app = rocket::custom(config);
-    app.mount("/", routes![get_flight_list, get_flight_options, post_ticket, get_tickets])
+    app.mount("/", routes![get_flight_list, get_flight_options, post_ticket, get_tickets, get_flight_list_for_date])
     .manage(SharedData {
         flights: Mutex::new(fill_flights()),
         options: Mutex::new(fill_flight_options()),
@@ -133,6 +133,23 @@ fn get_flight_list(shared: State<SharedData>) -> Json<String> {
     Json(serde_json::to_string(&shared_data.flights).unwrap())
 }
 
+#[get("/flights/<date>")]
+fn get_flight_list_for_date(shared: State<SharedData>, date: String) -> Json<String> {
+    let mut availabilities = Vec::new();
+    let shared_data: &SharedData = shared.inner();
+    let flights = shared_data.flights.lock().unwrap().clone();
+    let tickets = shared_data.tickets.lock().unwrap().clone();
+    for f in flights {
+        availabilities.push(FlightAvailability {
+            flight: f.clone(),
+            availability: {
+                let tickets_sold: Vec<Ticket> = tickets.clone().into_iter().filter(|x| x.flight.code == f.code && x.date == date).collect();
+                f.plane.total_seats - (tickets_sold.len() as i32) 
+            }
+        })
+    }
+    Json(serde_json::to_string(&availabilities).unwrap())
+}
 
 #[get("/available_options/<flight>")]
 fn get_flight_options(flight: String, shared: State<SharedData>) -> Result<Json<String>, Status> {
@@ -206,6 +223,8 @@ struct SharedData {
     options: Mutex<HashMap<String,Vec<FlightOptions>>>,
     tickets: Mutex<Vec<Ticket>>,
 }
+
+
 
 
 // Always use a limit to prevent DoS attacks.

@@ -50,3 +50,9 @@ pub enum OptionType {
     ChampagneOnBoard,
     LoungeAccess,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FlightAvailability {
+    pub flight: Flight,
+    pub availability: i32,
+}
