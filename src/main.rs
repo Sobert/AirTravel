@@ -10,10 +10,14 @@ use rocket::config::{Config, Environment};
 
 use std::io::Read;
 
-use rocket::{Request, Data, Outcome::{Failure, Success}};
 use rocket::data::{self, FromDataSimple};
-use rocket::http::{Status};
-use rocket::response::{content::{Json}};
+use rocket::http::Status;
+use rocket::response::content::Json;
+use rocket::{
+    Data,
+    Outcome::{Failure, Success},
+    Request,
+};
 
 use rocket::State;
 use std::sync::Mutex;
@@ -21,6 +25,7 @@ use std::sync::Mutex;
 mod model;
 use model::*;
 
+use chrono::NaiveDate;
 
 fn main() {
     let mut port: u16 = 8080;
@@ -43,11 +48,21 @@ fn main() {
         .unwrap();
 
     let app = rocket::custom(config);
-    app.mount("/", routes![get_flight_list, get_flight_options, post_ticket, get_tickets, get_flight_list_for_date])
+    app.mount(
+        "/",
+        routes![
+            get_flight_list,
+            get_flight_options,
+            post_ticket,
+            get_tickets,
+            get_flight_list_for_date
+        ],
+    )
     .manage(SharedData {
         flights: Mutex::new(fill_flights()),
         options: Mutex::new(fill_flight_options()),
         tickets: Mutex::new(Vec::new()),
+        start_date: Mutex::new(NaiveDate::from_ymd(2020,12,7)),
     })
     .launch();
 }
@@ -99,33 +114,34 @@ fn fill_flights() -> Vec<Flight> {
 
 fn fill_flight_options() -> HashMap<String, Vec<FlightOptions>> {
     let mut options = HashMap::new();
-    options.insert("default".to_string(), 
-    vec![
-        FlightOptions {
-            option_type: OptionType::BonusLuggage,
-            price: 100,
-        },
-        FlightOptions {
-            option_type: OptionType::ChampagneOnBoard,
-            price: 150,
-        }
-    ]
+    options.insert(
+        "default".to_string(),
+        vec![
+            FlightOptions {
+                option_type: OptionType::BonusLuggage,
+                price: 100,
+            },
+            FlightOptions {
+                option_type: OptionType::ChampagneOnBoard,
+                price: 150,
+            },
+        ],
     );
-    options.insert("AF347".to_string(), 
-    vec![
-        FlightOptions {
-            option_type: OptionType::FirstClass,
-            price: 1000,
-        },
-        FlightOptions {
-            option_type: OptionType::LoungeAccess,
-            price: 300,
-        }
-    ]
+    options.insert(
+        "AF347".to_string(),
+        vec![
+            FlightOptions {
+                option_type: OptionType::FirstClass,
+                price: 1000,
+            },
+            FlightOptions {
+                option_type: OptionType::LoungeAccess,
+                price: 300,
+            },
+        ],
     );
     options
 }
-
 
 #[get("/flights")]
 fn get_flight_list(shared: State<SharedData>) -> Json<String> {
@@ -137,16 +153,26 @@ fn get_flight_list(shared: State<SharedData>) -> Json<String> {
 fn get_flight_list_for_date(shared: State<SharedData>, date: String) -> Json<String> {
     let mut availabilities = Vec::new();
     let shared_data: &SharedData = shared.inner();
-    let flights = shared_data.flights.lock().unwrap().clone();
-    let tickets = shared_data.tickets.lock().unwrap().clone();
-    for f in flights {
-        availabilities.push(FlightAvailability {
-            flight: f.clone(),
-            availability: {
-                let tickets_sold: Vec<Ticket> = tickets.clone().into_iter().filter(|x| x.flight.code == f.code && x.date == date).collect();
-                f.plane.total_seats - (tickets_sold.len() as i32) 
-            }
-        })
+    //Making sure it is a date on the correct format !
+    let valid_date = NaiveDate::parse_from_str(&date, "%d-%m-%Y").unwrap();
+    let start_date = shared_data.start_date.lock().unwrap().clone();
+
+    if valid_date >= start_date {
+        let flights = shared_data.flights.lock().unwrap().clone();
+        let tickets = shared_data.tickets.lock().unwrap().clone();
+        for f in flights {
+            availabilities.push(FlightAvailability {
+                flight: f.clone(),
+                availability: {
+                    let tickets_sold: Vec<Ticket> = tickets
+                        .clone()
+                        .into_iter()
+                        .filter(|x| x.flight.code == f.code && x.date == date)
+                        .collect();
+                    f.plane.total_seats - (tickets_sold.len() as i32)
+                },
+            })
+        }
     }
     Json(serde_json::to_string(&availabilities).unwrap())
 }
@@ -172,7 +198,6 @@ fn get_flight_options(flight: String, shared: State<SharedData>) -> Result<Json<
             Ok(Json(serde_json::to_string(&options).unwrap()))
         }
     }
-    
 }
 
 #[get("/tickets")]
@@ -183,8 +208,15 @@ fn get_tickets(shared: State<SharedData>) -> Json<String> {
 
 #[post("/book", format = "application/json", data = "<ticket>")]
 fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> Result<Json<String>, Status> {
-    //check flight
     let shared_data: &SharedData = shared.inner();
+
+    let date_from_ticket = ticket.date.to_string();
+    let valid_date = NaiveDate::parse_from_str(&date_from_ticket, "%d-%m-%Y").unwrap();
+    let start_date = shared_data.start_date.lock().unwrap().clone();
+    if valid_date < start_date {
+        return Err(Status::Gone);
+    }
+
     let flights = shared_data.flights.lock().unwrap();
     let mut flights_iter = flights.clone().into_iter();
     match flights_iter.find(|x| x.code == ticket.flight.code) {
@@ -192,7 +224,11 @@ fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> Result<Json<String>
         Some(flight) => {
             //Check availability
             let mut tickets = shared_data.tickets.lock().unwrap();
-            let tickets_sold: Vec<Ticket> = tickets.clone().into_iter().filter(|x| x.flight.code == flight.code && x.date == ticket.date).collect();
+            let tickets_sold: Vec<Ticket> = tickets
+                .clone()
+                .into_iter()
+                .filter(|x| x.flight.code == flight.code && x.date == ticket.date)
+                .collect();
             if (tickets_sold.len() as i32) - flight.plane.total_seats >= 0 {
                 //Not seats
                 return Err(Status::Gone);
@@ -220,12 +256,10 @@ fn post_ticket(ticket: Ticket, shared: State<SharedData>) -> Result<Json<String>
 
 struct SharedData {
     flights: Mutex<Vec<Flight>>,
-    options: Mutex<HashMap<String,Vec<FlightOptions>>>,
+    options: Mutex<HashMap<String, Vec<FlightOptions>>>,
     tickets: Mutex<Vec<Ticket>>,
+    start_date: Mutex<NaiveDate>,
 }
-
-
-
 
 // Always use a limit to prevent DoS attacks.
 const LIMIT: u64 = 100000;
@@ -241,7 +275,7 @@ impl FromDataSimple for Ticket {
         //Deserialize
         match serde_json::from_str(&string) {
             Ok(t) => Success(t),
-            Err(e) =>  { 
+            Err(e) => {
                 println!("{:#?}", e);
                 Failure((Status::UnprocessableEntity, format!("{:?}", e)))
             }
