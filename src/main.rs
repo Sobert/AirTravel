@@ -21,6 +21,7 @@ use std::sync::Mutex;
 mod model;
 use model::*;
 
+use chrono::NaiveDate;
 
 fn main() {
     let mut port: u16 = 8080;
@@ -135,6 +136,8 @@ fn get_flight_list(shared: State<SharedData>) -> Json<String> {
 
 #[get("/flights/<date>")]
 fn get_flight_list_for_date(shared: State<SharedData>, date: String) -> Json<String> {
+    //Making sure it is a date on the correct format !
+    let _ = NaiveDate::parse_from_str(&date,"%d-%m-%Y" ).unwrap();
     let mut availabilities = Vec::new();
     let shared_data: &SharedData = shared.inner();
     let flights = shared_data.flights.lock().unwrap().clone();
@@ -172,7 +175,6 @@ fn get_flight_options(flight: String, shared: State<SharedData>) -> Result<Json<
             Ok(Json(serde_json::to_string(&options).unwrap()))
         }
     }
-    
 }
 
 #[get("/tickets")]
