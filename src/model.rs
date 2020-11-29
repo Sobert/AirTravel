@@ -22,8 +22,7 @@ pub struct Flight {
     pub departure: Airport,
     pub arrival: Airport,
     pub base_price: i32,
-    pub plane: Plane,
-    pub seats_booked: i32,
+    pub plane: Plane
 }
 
 #[derive(Serialize, Deserialize, Debug)]
